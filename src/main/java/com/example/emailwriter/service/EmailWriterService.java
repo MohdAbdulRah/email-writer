@@ -4,6 +4,12 @@ import com.example.emailwriter.models.Requests.EmailRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class EmailWriterService {
@@ -24,6 +30,42 @@ public class EmailWriterService {
             throw new RuntimeException("Please Give some email Content");
         }
         String prompt = buildPrompt(request);
+        Map<String, Object> requestBody = Map.of(
+                "contents", List.of(
+                        Map.of(
+                                "parts", List.of(
+                                        Map.of("text", prompt)
+                                )
+                        )
+                )
+        );
+         String response = webClient.post()
+                 .uri(uriBuilder -> uriBuilder.path("/v1beta/models/gemini-2.5-flash:generateContent")
+                         .build()
+                   )
+                 .header("x-goog-api-key",apiKey)
+                 .header("Content-Type","application/json")
+                 .bodyValue(requestBody)
+                 .retrieve()
+                 .bodyToMono(String.class)
+                 .block();
+         return extractResponseContent(response);
+    }
+
+    private String extractResponseContent(String response) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(response);
+            JsonNode textNode = root.path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text");
+            return textNode.asString();
+        } catch (JacksonException e) {
+            throw new RuntimeException(e);
+        }
 
     }
 
